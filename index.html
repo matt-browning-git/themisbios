@@ -1,0 +1,394 @@
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Themis Bios</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: #080E18;
+    overflow: hidden;
+    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+
+  .ui {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 32px 48px;
+  }
+
+  .logo {
+    height: 26px;
+    width: auto;
+    opacity: 0.88;
+  }
+
+  .nav-location {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+    gap: 4px;
+  }
+
+  .nav-city {
+    font-size: clamp(13px, 1.4vw, 18px);
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: rgba(230, 216, 195, 0.9);
+  }
+
+  .nav-country {
+    font-size: clamp(9px, 0.8vw, 11px);
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(230, 216, 195, 0.32);
+  }
+
+  .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 18px;
+    padding: 0 24px;
+  }
+
+  .headline {
+    font-size: clamp(30px, 4.5vw, 56px);
+    font-weight: 300;
+    color: rgba(230, 216, 195, 0.9);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+  }
+
+  .subline {
+    font-size: clamp(12px, 1.2vw, 14px);
+    font-weight: 400;
+    color: rgba(230, 216, 195, 0.32);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .bottom {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 28px 48px;
+  }
+
+  .notify-btn {
+    pointer-events: all;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: transparent;
+    border: 0.5px solid rgba(0, 184, 151, 0.28);
+    color: rgba(0, 184, 151, 0.6);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 11px 24px;
+    cursor: pointer;
+    transition: border-color 0.25s, color 0.25s, background 0.25s;
+    border-radius: 2px;
+  }
+
+  .notify-btn:hover {
+    border-color: rgba(0, 184, 151, 0.6);
+    color: rgba(0, 184, 151, 0.9);
+    background: rgba(0, 184, 151, 0.04);
+  }
+
+  .arrow { transition: transform 0.25s; }
+  .notify-btn:hover .arrow { transform: translateX(3px); }
+</style>
+</head>
+<body>
+
+<canvas id="hero"></canvas>
+
+<div class="ui">
+  <div class="nav">
+    <svg class="logo" viewBox="0 0 260 26" xmlns="http://www.w3.org/2000/svg" aria-label="Themis Bios">
+      <text x="0" y="19" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="20" font-weight="300" letter-spacing="3" fill="rgba(230,216,195,0.88)">THEMIS BIOS</text>
+    </svg>
+    <div class="nav-location">
+      <span class="nav-city">San Diego</span>
+      <span class="nav-country">USA</span>
+    </div>
+  </div>
+
+  <div class="hero">
+    <h1 class="headline">The work comes first.</h1>
+    <p class="subline">Stay close.</p>
+  </div>
+
+  <div class="bottom">
+    <button class="notify-btn" onclick="this.innerHTML='&#10003; &nbsp;noted'">
+      Stay informed <span class="arrow">&#8594;</span>
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cvs = document.getElementById('hero');
+  var dpr = window.devicePixelRatio || 1;
+  if(dpr > 2) dpr = 2;
+  var W = 0, H = 0;
+  var ctx = cvs.getContext('2d');
+  var rafId = null;
+  var running = false;
+
+  function resize(){
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cvs.width = Math.floor(W * dpr);
+    cvs.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  resize();
+
+  var rotX = 0.38, rotY = 0.3;
+  var RY = 0.004, RX = 0.0005;
+  var FOV = 320;
+
+  function rotateXY(x, y, z, rx, ry){
+    var x2 = x*Math.cos(ry) + z*Math.sin(ry);
+    var z2 = -x*Math.sin(ry) + z*Math.cos(ry);
+    var y2 = y*Math.cos(rx) - z2*Math.sin(rx);
+    var z3 = y*Math.sin(rx) + z2*Math.cos(rx);
+    return {x:x2, y:y2, z:z3};
+  }
+
+  function project(x, y, z){
+    var s = FOV / (FOV + z);
+    return {sx: W/2 + x*s, sy: H/2 + y*s, scale: s, z: z};
+  }
+
+  var nodes = [], edges = [], pulses = [], spawnT = 0;
+
+  function build(){
+    nodes = []; edges = []; pulses = [];
+    var sc = Math.min(W, H);
+    var R1 = sc*0.13, R2 = sc*0.26, R3 = sc*0.42;
+    var g = Math.PI * (3 - Math.sqrt(5));
+
+    nodes.push({ox:0, oy:0, oz:0, tier:0, r:6});
+
+    var i, a, t, lat, lon;
+    for(i=0; i<6; i++){
+      a = (i/6)*Math.PI*2; t = 0.55;
+      nodes.push({ox:Math.cos(a)*R1, oy:Math.sin(a)*R1*Math.cos(t), oz:Math.sin(a)*R1*Math.sin(t), tier:1, r:3.5});
+    }
+    for(i=0; i<12; i++){
+      lat = Math.acos(1 - 2*(i+0.5)/12); lon = g*i;
+      nodes.push({ox:R2*Math.sin(lat)*Math.cos(lon), oy:R2*Math.sin(lat)*Math.sin(lon), oz:R2*Math.cos(lat), tier:2, r:2.5});
+    }
+    for(i=0; i<18; i++){
+      lat = Math.acos(1 - 2*(i+0.5)/18); lon = g*i*1.4;
+      nodes.push({ox:R3*Math.sin(lat)*Math.cos(lon), oy:R3*Math.sin(lat)*Math.sin(lon), oz:R3*Math.cos(lat), tier:3, r:1.8});
+    }
+
+    function d3(a, b){ return Math.sqrt((a.ox-b.ox)*(a.ox-b.ox)+(a.oy-b.oy)*(a.oy-b.oy)+(a.oz-b.oz)*(a.oz-b.oz)); }
+
+    var s1 = nodes.slice(1,7), s2 = nodes.slice(7,19), s3 = nodes.slice(19);
+
+    s1.forEach(function(n){ edges.push({ai:0, bi:nodes.indexOf(n), tier:0}); });
+    s1.forEach(function(n, i){ edges.push({ai:nodes.indexOf(n), bi:nodes.indexOf(s1[(i+1)%6]), tier:1}); });
+    edges.push({ai:nodes.indexOf(s1[0]), bi:nodes.indexOf(s1[3]), tier:1});
+    edges.push({ai:nodes.indexOf(s1[1]), bi:nodes.indexOf(s1[4]), tier:1});
+    edges.push({ai:nodes.indexOf(s1[2]), bi:nodes.indexOf(s1[5]), tier:1});
+
+    s2.forEach(function(n){
+      var sorted = s1.slice().sort(function(a,b){ return d3(a,n)-d3(b,n); });
+      edges.push({ai:nodes.indexOf(sorted[0]), bi:nodes.indexOf(n), tier:2});
+      if(Math.random()>0.35) edges.push({ai:nodes.indexOf(sorted[1]), bi:nodes.indexOf(n), tier:2});
+    });
+    s3.forEach(function(n){
+      var sorted = s2.slice().sort(function(a,b){ return d3(a,n)-d3(b,n); });
+      edges.push({ai:nodes.indexOf(sorted[0]), bi:nodes.indexOf(n), tier:3});
+      if(Math.random()>0.55) edges.push({ai:nodes.indexOf(sorted[1]), bi:nodes.indexOf(n), tier:3});
+    });
+    for(i=0; i<6; i++) edges.push({ai:nodes.indexOf(s2[i]), bi:nodes.indexOf(s2[(i+4)%12]), tier:2});
+  }
+
+  build();
+
+  function getProj(){
+    return nodes.map(function(n){
+      var r = rotateXY(n.ox, n.oy, n.oz, rotX, rotY);
+      var p = project(r.x, r.y, r.z);
+      return {sx:p.sx, sy:p.sy, scale:p.scale, z:p.z, tier:n.tier, r:n.r};
+    });
+  }
+
+  function depthA(z, maxR, lo, hi){
+    var t = (z + maxR) / (maxR * 2);
+    if(t < 0) t = 0; if(t > 1) t = 1;
+    return lo + t*(hi - lo);
+  }
+
+  function spawnPulse(){
+    var e = edges[Math.floor(Math.random()*edges.length)];
+    var rev = Math.random() > 0.5;
+    pulses.push({ai:rev?e.bi:e.ai, bi:rev?e.ai:e.bi, tier:e.tier, t:0, spd:0.003+Math.random()*0.002});
+  }
+
+  var lastTime = 0;
+
+  function frame(now){
+    rafId = requestAnimationFrame(frame);
+
+    // Throttle to ~60fps and skip if tab is hidden
+    if(document.hidden) return;
+    if(now - lastTime < 14) return;
+    lastTime = now;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#080E18';
+    ctx.fillRect(0, 0, W, H);
+
+    rotY += RY; rotX += RX;
+
+    var proj = getProj();
+    var maxR = Math.min(W, H) * 0.45;
+
+    // Edges sorted back to front
+    var sortedEdges = edges.slice().sort(function(a, b){
+      return ((proj[a.ai].z+proj[a.bi].z)/2) - ((proj[b.ai].z+proj[b.bi].z)/2);
+    });
+
+    var colorMap = ['0,184,151','0,184,151','230,216,195','230,216,195'];
+    var loMap =  [0.15, 0.06, 0.02, 0.01];
+    var hiMap =  [0.55, 0.28, 0.15, 0.08];
+    var lwMap =  [0.9,  0.6,  0.4,  0.3];
+
+    sortedEdges.forEach(function(e){
+      var a = proj[e.ai], b = proj[e.bi];
+      var avgZ = (a.z + b.z) / 2;
+      var ti = e.tier;
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.strokeStyle = 'rgba(' + colorMap[ti] + ',' + depthA(avgZ, maxR, loMap[ti], hiMap[ti]) + ')';
+      ctx.lineWidth = lwMap[ti];
+      ctx.stroke();
+    });
+
+    // Pulses
+    spawnT++;
+    if(spawnT > 60){ spawnT = 0; spawnPulse(); }
+
+    var i;
+    for(i = pulses.length-1; i >= 0; i--){
+      pulses[i].t += pulses[i].spd;
+      if(pulses[i].t >= 1) pulses.splice(i, 1);
+    }
+
+    pulses.forEach(function(p){
+      var a = proj[p.ai], b = proj[p.bi];
+      var sx = a.sx + (b.sx-a.sx)*p.t;
+      var sy = a.sy + (b.sy-a.sy)*p.t;
+      var sc2 = a.scale + (b.scale-a.scale)*p.t;
+      var az = a.z + (b.z-a.z)*p.t;
+      var fade = Math.sin(p.t * Math.PI);
+      var da = depthA(az, maxR, 0.15, 1);
+      var pr = Math.max((p.tier<=1 ? 3.2 : 2.2) * sc2, 0.3);
+      ctx.beginPath();
+      ctx.arc(sx, sy, pr, 0, Math.PI*2);
+      ctx.fillStyle = p.tier<=1
+        ? 'rgba(0,184,151,' + (fade*da*0.95) + ')'
+        : 'rgba(230,216,195,' + (fade*da*0.55) + ')';
+      ctx.fill();
+    });
+
+    // Nodes back to front
+    var order = [];
+    for(i = 0; i < proj.length; i++) order.push(i);
+    order.sort(function(a, b){ return proj[a].z - proj[b].z; });
+
+    order.forEach(function(i){
+      var p = proj[i], n = nodes[i];
+      var da = depthA(p.z, maxR, 0, 1);
+      var sz = n.r * p.scale;
+
+      if(n.tier === 0){
+        var rings = [sz*6, sz*3.5, sz*2];
+        var ringA = [0.05, 0.09, 0.18];
+        rings.forEach(function(rr, ri){
+          ctx.beginPath(); ctx.arc(p.sx, p.sy, rr, 0, Math.PI*2);
+          ctx.strokeStyle = 'rgba(0,184,151,' + ringA[ri] + ')';
+          ctx.lineWidth = 0.5; ctx.stroke();
+        });
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, sz, 0, Math.PI*2);
+        ctx.fillStyle = '#00B897'; ctx.fill();
+        ctx.beginPath(); ctx.arc(p.sx-sz*0.28, p.sy-sz*0.28, sz*0.42, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
+
+      } else if(n.tier === 1){
+        var al = 0.12 + da*0.78;
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, sz*2.2, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(0,184,151,' + (al*0.18) + ')';
+        ctx.lineWidth = 0.4; ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, sz, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(0,184,151,' + al + ')'; ctx.fill();
+        if(da > 0.45){
+          ctx.beginPath(); ctx.arc(p.sx-sz*0.22, p.sy-sz*0.22, sz*0.38, 0, Math.PI*2);
+          ctx.fillStyle = 'rgba(255,255,255,' + ((da-0.45)*0.32) + ')'; ctx.fill();
+        }
+
+      } else if(n.tier === 2){
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, sz, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(0,184,151,' + (0.07+da*0.5) + ')'; ctx.fill();
+
+      } else {
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, sz, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(230,216,195,' + (0.04+da*0.3) + ')'; ctx.fill();
+      }
+    });
+  }
+
+  // Start loop
+  rafId = requestAnimationFrame(frame);
+
+  // Resume after tab becomes visible again
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden && !rafId){
+      lastTime = 0;
+      rafId = requestAnimationFrame(frame);
+    }
+  });
+
+  window.addEventListener('resize', function(){
+    resize();
+    build();
+  });
+
+})();
+</script>
+
+</body>
+</html>
